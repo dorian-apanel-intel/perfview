@@ -127,7 +127,7 @@ namespace Microsoft.Diagnostics.Tracing.Etlx
             }
             try
             {
-                return new TraceLog(etlOrEtlxFilePath);
+                return new TraceLog(etlOrEtlxFilePath, options);
             }
             catch (Exception)
             {
@@ -138,7 +138,7 @@ namespace Microsoft.Diagnostics.Tracing.Etlx
             }
             // Try again to create from scratch.
             CreateFromEventTraceLogFile(etlFilePath, etlOrEtlxFilePath, options);
-            return new TraceLog(etlOrEtlxFilePath);
+            return new TraceLog(etlOrEtlxFilePath, options);
         }
 
         /// <summary>
@@ -208,10 +208,10 @@ namespace Microsoft.Diagnostics.Tracing.Etlx
         /// <summary>
         /// Opens an existing Extended Trace Event log file (ETLX) file.  See also TraceLog.OpenOrCreate.
         /// </summary>
-        public TraceLog(string etlxFilePath)
+        public TraceLog(string etlxFilePath, TraceLogOptions options = null)
             : this()
         {
-            InitializeFromFile(etlxFilePath);
+            InitializeFromFile(etlxFilePath, options);
         }
         /// <summary>
         /// All the events in the ETLX file. The returned TraceEvents instance supports IEnumerable so it can be used
@@ -909,7 +909,6 @@ namespace Microsoft.Diagnostics.Tracing.Etlx
                 // Any parser that has state we need to turn on during the conversion so that the the state will build up
                 // (we copy it out below).   To date there are only three parsers that do this (registered, dynamic
                 // (which includes registered), an kernel)
-                // TODO add an option that allows users to add their own here.
                 // Note that I am not using the variables below, I am fetching the value so that it has the side
                 // effect of creating this parser (which will in turn indicate to the system that I care about the
                 // state these parsers generate as part of their operation).
@@ -3399,7 +3398,7 @@ namespace Microsoft.Diagnostics.Tracing.Etlx
             }
         }
 
-        private unsafe void InitializeFromFile(string etlxFilePath)
+        private unsafe void InitializeFromFile(string etlxFilePath, TraceLogOptions options = null)
         {
             // If this Assert files, fix the declaration of headerSize to match
             Debug.Assert(sizeof(TraceEventNativeMethods.EVENT_HEADER) == 0x50 && sizeof(TraceEventNativeMethods.ETW_BUFFER_CONTEXT) == 4);
@@ -3456,6 +3455,10 @@ namespace Microsoft.Diagnostics.Tracing.Etlx
             IFastSerializable entry = deserializer.GetEntryObject();
 
             RegisterStandardParsers();
+            if(options != null && options.OnRegisterParsers != null)
+            {
+                options.OnRegisterParsers(this);
+            }
 
             // TODO this needs to be a runtime error, not an assert.
             Debug.Assert(entry == this);
@@ -10611,6 +10614,12 @@ namespace Microsoft.Diagnostics.Tracing.Etlx
         /// total number of events in the ETLX file.  You can throw if you want to abort.
         /// </summary>
         public Action<bool, int, int> OnLostEvents;
+        /// <summary>
+        /// If this delegate is non-null, it is called just after registering standard parsers.
+        /// Use it to inject your custom parsers to TraceLog. Just pass TraceEventSource to custom
+        /// parser constructor in this action.
+        /// </summary>
+        public Action<TraceEventSource> OnRegisterParsers;
         /// <summary>
         /// If you have the manifests for particular providers, you can read them in explicitly by setting this directory.
         ///  All files of the form *.manifest.xml will be read into the DynamicTraceEventParser's database before conversion
